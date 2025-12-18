@@ -7,7 +7,7 @@ if (telegramId) {
 const API_BASE = `${window.location.protocol}//${window.location.hostname}:8000/api`;
 const headers = telegramId ? { 'X-Telegram-User-ID': telegramId } : {};
 
-const map = L.map('map');
+const map = L.map('map', { zoomControl: false, tap: false });
 const markers = L.markerClusterGroup();
 const markerById = new Map();
 let center = [55.751244, 37.618423];
@@ -20,6 +20,7 @@ let userLocationKnown = false;
 let eventsCache = new Map();
 
 const loadingEl = document.getElementById('loading');
+const mapLoadingEl = document.getElementById('map-loading');
 const formContainer = document.getElementById('form-container');
 const blocker = document.getElementById('blocker');
 const selectionHint = document.getElementById('selection-hint');
@@ -27,6 +28,10 @@ const profilePanel = document.getElementById('profile-panel');
 
 function setLoading(state) {
   loadingEl.style.display = state ? 'block' : 'none';
+}
+
+function setMapLoading(state) {
+  mapLoadingEl.style.display = state ? 'flex' : 'none';
 }
 
 async function fetchJSON(url, options = {}) {
@@ -319,7 +324,19 @@ function toggleProfilePanel() {
 async function init() {
   await loadProfile();
   map.setView(center, userLocationKnown ? 15 : 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+  const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 });
+  let pendingTiles = 0;
+  tileLayer.on('loading', () => {
+    pendingTiles += 1;
+    setMapLoading(true);
+  });
+  tileLayer.on('load', () => {
+    pendingTiles = Math.max(0, pendingTiles - 1);
+    if (pendingTiles === 0) setMapLoading(false);
+  });
+  tileLayer.addTo(map);
+  map.whenReady(() => setMapLoading(false));
+  L.control.zoom({ position: 'bottomleft' }).addTo(map);
   map.addLayer(markers);
   await loadCategories();
   if (userLocationKnown) {
