@@ -1,4 +1,6 @@
 const telegram = window.Telegram?.WebApp;
+telegram?.ready();
+telegram?.expand?.();
 const telegramId = telegram?.initDataUnsafe?.user?.id || localStorage.getItem('telegram_id');
 if (telegramId) {
   localStorage.setItem('telegram_id', telegramId);
@@ -18,6 +20,7 @@ let tempMarker = null;
 let currentUser = null;
 let userLocationKnown = false;
 let eventsCache = new Map();
+let userMarker = null;
 
 const loadingEl = document.getElementById('loading');
 const mapLoadingEl = document.getElementById('map-loading');
@@ -25,6 +28,7 @@ const formContainer = document.getElementById('form-container');
 const blocker = document.getElementById('blocker');
 const selectionHint = document.getElementById('selection-hint');
 const profilePanel = document.getElementById('profile-panel');
+const controlStack = document.getElementById('control-stack');
 
 function setLoading(state) {
   loadingEl.style.display = state ? 'block' : 'none';
@@ -40,6 +44,23 @@ async function fetchJSON(url, options = {}) {
   return resp.json();
 }
 
+function updateUserMarker() {
+  if (!currentUser?.profile?.last_latitude || !currentUser?.profile?.last_longitude) return;
+  const coords = [currentUser.profile.last_latitude, currentUser.profile.last_longitude];
+  if (userMarker) {
+    userMarker.setLatLng(coords);
+  } else {
+    userMarker = L.circleMarker(coords, {
+      radius: 10,
+      color: '#1976d2',
+      fillColor: '#2196f3',
+      fillOpacity: 0.6,
+      weight: 3,
+    }).addTo(map);
+    userMarker.bindPopup('Ваша последняя локация');
+  }
+}
+
 async function loadProfile() {
   if (!telegramId) return null;
   try {
@@ -48,6 +69,7 @@ async function loadProfile() {
     if (me.profile?.last_latitude && me.profile?.last_longitude) {
       center = [me.profile.last_latitude, me.profile.last_longitude];
       userLocationKnown = true;
+      updateUserMarker();
     }
     return me;
   } catch (err) {
@@ -194,9 +216,11 @@ function ensureLocationOrBlock() {
   if (!userLocationKnown) {
     blocker.style.display = 'flex';
     formContainer.style.display = 'none';
+    controlStack.classList.add('disabled-actions');
     return false;
   }
   blocker.style.display = 'none';
+  controlStack.classList.remove('disabled-actions');
   return true;
 }
 
@@ -207,6 +231,7 @@ function centerOnUser() {
   }
   const { last_latitude, last_longitude } = currentUser.profile;
   map.setView([last_latitude, last_longitude], 15);
+  updateUserMarker();
   loadEvents(last_latitude, last_longitude);
 }
 
@@ -324,7 +349,7 @@ function toggleProfilePanel() {
 async function init() {
   await loadProfile();
   map.setView(center, userLocationKnown ? 15 : 12);
-  const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 });
+  const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, crossOrigin: true });
   let pendingTiles = 0;
   tileLayer.on('loading', () => {
     pendingTiles += 1;
@@ -335,7 +360,10 @@ async function init() {
     if (pendingTiles === 0) setMapLoading(false);
   });
   tileLayer.addTo(map);
-  map.whenReady(() => setMapLoading(false));
+  map.whenReady(() => {
+    setMapLoading(false);
+    setTimeout(() => map.invalidateSize(), 50);
+  });
   L.control.zoom({ position: 'bottomleft' }).addTo(map);
   map.addLayer(markers);
   await loadCategories();
