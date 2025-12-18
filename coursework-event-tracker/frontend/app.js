@@ -66,9 +66,9 @@ async function loadProfile() {
   try {
     const me = await fetchJSON(`${API_BASE}/users/me`);
     currentUser = me;
-    if (me.profile?.last_latitude && me.profile?.last_longitude) {
+    userLocationKnown = Boolean(me.profile?.last_latitude && me.profile?.last_longitude);
+    if (userLocationKnown) {
       center = [me.profile.last_latitude, me.profile.last_longitude];
-      userLocationKnown = true;
       updateUserMarker();
     }
     return me;
@@ -153,14 +153,15 @@ function renderEventMarker(event) {
 
 async function loadEvents(lat, lon, radius = 10) {
   setLoading(true);
-  markers.clearLayers();
-  markerById.clear();
   try {
     const events = await fetchJSON(`${API_BASE}/events/nearby?lat=${lat}&lon=${lon}&radius=${radius}&limit=20`);
+    markers.clearLayers();
+    markerById.clear();
     eventsCache = new Map(events.map((e) => [e.id, e]));
     events.forEach(renderEventMarker);
   } catch (err) {
     console.error(err);
+    alert('Не удалось загрузить события. Попробуйте ещё раз.');
   } finally {
     setLoading(false);
   }
@@ -210,6 +211,7 @@ async function reloadMarkers() {
   const c = map.getCenter();
   center = [c.lat, c.lng];
   await loadEvents(center[0], center[1]);
+  updateUserMarker();
 }
 
 function ensureLocationOrBlock() {
@@ -224,15 +226,16 @@ function ensureLocationOrBlock() {
   return true;
 }
 
-function centerOnUser() {
-  if (!userLocationKnown || !currentUser?.profile) {
+async function centerOnUser() {
+  const refreshed = await loadProfile();
+  if (!refreshed || !userLocationKnown || !currentUser?.profile) {
     alert('Сначала отправьте свою геолокацию боту');
     return;
   }
   const { last_latitude, last_longitude } = currentUser.profile;
-  map.setView([last_latitude, last_longitude], 15);
+  map.setView([last_latitude, last_longitude], 15, { animate: true });
   updateUserMarker();
-  loadEvents(last_latitude, last_longitude);
+  await loadEvents(last_latitude, last_longitude);
 }
 
 function openEditForm(event) {
@@ -253,16 +256,21 @@ function resetFormState() {
     map.removeLayer(tempMarker);
     tempMarker = null;
   }
+  selectedCoords = null;
+  selectingPoint = false;
+  map.getContainer().classList.remove('selecting');
 }
 
 function startPointSelection() {
   if (!ensureLocationOrBlock()) return;
+  if (selectingPoint) return;
   selectingPoint = true;
   toggleSelectionHint(true);
-  alert('Тапните по карте, чтобы выбрать точку для мероприятия');
+  map.getContainer().classList.add('selecting');
   const onceClick = (e) => {
     selectingPoint = false;
     toggleSelectionHint(false);
+    map.getContainer().classList.remove('selecting');
     selectedCoords = [e.latlng.lat, e.latlng.lng];
     if (tempMarker) map.removeLayer(tempMarker);
     tempMarker = L.marker(selectedCoords, {
@@ -336,17 +344,19 @@ function buildProfilePanel() {
   });
 }
 
-function toggleProfilePanel() {
+async function toggleProfilePanel() {
   const isVisible = profilePanel.style.display === 'block';
   if (isVisible) {
     profilePanel.style.display = 'none';
   } else {
+    await loadProfile();
     buildProfilePanel();
     profilePanel.style.display = 'block';
   }
 }
 
 async function init() {
+  setMapLoading(true);
   await loadProfile();
   map.setView(center, userLocationKnown ? 15 : 12);
   const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, crossOrigin: true });
@@ -362,16 +372,18 @@ async function init() {
   tileLayer.addTo(map);
   map.whenReady(() => {
     setMapLoading(false);
-    setTimeout(() => map.invalidateSize(), 50);
+    setTimeout(() => map.invalidateSize(), 80);
   });
   L.control.zoom({ position: 'bottomleft' }).addTo(map);
   map.addLayer(markers);
+  L.DomEvent.disableClickPropagation(profilePanel);
   await loadCategories();
   if (userLocationKnown) {
     await loadEvents(center[0], center[1]);
   } else {
     ensureLocationOrBlock();
   }
+  ensureLocationOrBlock();
 
   map.on('moveend', () => {
     if (selectingPoint || !userLocationKnown) return;
@@ -387,6 +399,10 @@ async function init() {
 
   document.getElementById('event-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!formContainer.dataset.editing && !selectedCoords) {
+      alert('Сначала выберите точку на карте');
+      return;
+    }
     const coords = selectedCoords || center;
     const payload = {
       title: document.getElementById('title').value,
