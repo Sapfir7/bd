@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from ..dependencies import get_current_user_id, get_db
 from ..models import User, UserProfile
@@ -12,11 +13,28 @@ def _get_db():
     yield from get_db()
 
 
+@router.get("/me", response_model=UserOut)
+def get_me(user_id: int = Depends(get_current_user_id), db: Session = Depends(_get_db)):
+    user = db.query(User).get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.roles = [r.role.role_name for r in user.roles]
+    return user
+
+
 @router.post("", response_model=UserOut)
 def create_user(payload: UserCreate, db: Session = Depends(_get_db)):
     user = User(**payload.dict())
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = db.query(User).filter(User.telegram_id == payload.telegram_id).first()
+        if existing:
+            existing.roles = [r.role.role_name for r in existing.roles]
+            return existing
+        raise
     db.refresh(user)
     profile = UserProfile(user_id=user.id)
     db.add(profile)
@@ -46,13 +64,4 @@ def update_profile(user_id: int, payload: UserProfileUpdate, db: Session = Depen
     db.add(user)
     db.commit()
     db.refresh(user)
-    return user
-
-
-@router.get("/me", response_model=UserOut)
-def get_me(user_id: int = Depends(get_current_user_id), db: Session = Depends(_get_db)):
-    user = db.query(User).get(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    user.roles = [r.role.role_name for r in user.roles]
     return user
