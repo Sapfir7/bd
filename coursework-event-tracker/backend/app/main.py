@@ -1,13 +1,33 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from .database import Base, engine
+from .database import Base, engine, get_session
 from .models import *  # noqa: F401,F403
 from .routers import analytics, batch_import, complaints, events, users, categories
+from .models import Category
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Event Tracker API", version="1.0.0")
+
+DEFAULT_CATEGORIES = [
+    "Развлечения и досуг",
+    "Спорт и активности",
+    "Образование",
+    "Еда и напитки",
+    "Культура и искусство",
+    "Срочные события",
+    "Шопинг и маркеты",
+    "Природа и прогулки",
+]
+
+
+def seed_default_categories() -> None:
+    with get_session() as session:
+        if session.query(Category).count() > 0:
+            return
+        session.add_all([Category(category_name=name, description="") for name in DEFAULT_CATEGORIES])
+        session.commit()
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,3 +55,8 @@ app.include_router(categories.router, prefix="/api")
 @app.get("/health")
 def healthcheck():
     return {"status": "ok"}
+
+
+@app.on_event("startup")
+def startup_seed():
+    seed_default_categories()

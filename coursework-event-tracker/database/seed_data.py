@@ -50,7 +50,16 @@ def seed():
         )
     conn.commit()
 
-    categories = ["Спорт", "Музыка", "Обучение", "Игры", "Культура"]
+    categories = [
+        "Развлечения и досуг",
+        "Спорт и активности",
+        "Образование",
+        "Еда и напитки",
+        "Культура и искусство",
+        "Срочные события",
+        "Шопинг и маркеты",
+        "Природа и прогулки",
+    ]
     for cat in categories:
         cur.execute("INSERT INTO categories (category_name, description) VALUES (%s,%s) ON CONFLICT DO NOTHING", (cat, fake.sentence()))
     conn.commit()
