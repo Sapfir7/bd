@@ -6,7 +6,7 @@ if (telegramId) {
   localStorage.setItem('telegram_id', telegramId);
 }
 
-const API_BASE = `${window.location.protocol}//${window.location.hostname}:8000/api`;
+const API_BASE = '/api';
 const headers = telegramId ? { 'X-Telegram-User-ID': telegramId } : {};
 
 const map = L.map('map', { zoomControl: false, tap: false });
@@ -39,7 +39,14 @@ function setMapLoading(state) {
 }
 
 async function fetchJSON(url, options = {}) {
-  const resp = await fetch(url, { ...options, headers: { 'Content-Type': 'application/json', ...headers } });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  const resp = await fetch(url, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...headers },
+    signal: controller.signal,
+  });
+  clearTimeout(timeoutId);
   if (!resp.ok) throw new Error(await resp.text());
   return resp.json();
 }
@@ -377,6 +384,8 @@ async function init() {
   L.control.zoom({ position: 'bottomleft' }).addTo(map);
   map.addLayer(markers);
   L.DomEvent.disableClickPropagation(profilePanel);
+  L.DomEvent.disableClickPropagation(controlStack);
+  L.DomEvent.disableClickPropagation(document.getElementById('profile-btn'));
   await loadCategories();
   if (userLocationKnown) {
     await loadEvents(center[0], center[1]);
