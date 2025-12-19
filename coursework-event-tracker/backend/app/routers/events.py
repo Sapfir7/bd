@@ -27,14 +27,6 @@ def create_event(payload: EventCreate, user_id: int = Depends(get_current_user_i
     return event
 
 
-@router.get("/{event_id}", response_model=EventOut)
-def get_event(event_id: int, db: Session = Depends(_get_db)):
-    event = db.query(Event).get(event_id)
-    if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
-    return event
-
-
 @router.get("", response_model=List[EventOut])
 def list_events(
     db: Session = Depends(_get_db),
@@ -67,6 +59,14 @@ def events_nearby(
             result.append((distance, event))
     result.sort(key=lambda item: item[0])
     return [item[1] for item in result[:limit]]
+
+
+@router.get("/{event_id}", response_model=EventOut)
+def get_event(event_id: int, db: Session = Depends(_get_db)):
+    event = db.query(Event).get(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return event
 
 
 @router.put("/{event_id}", response_model=EventOut)

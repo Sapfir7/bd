@@ -386,6 +386,8 @@ async function init() {
   L.DomEvent.disableClickPropagation(profilePanel);
   L.DomEvent.disableClickPropagation(controlStack);
   L.DomEvent.disableClickPropagation(document.getElementById('profile-btn'));
+  L.DomEvent.disableClickPropagation(formContainer);
+  L.DomEvent.disableScrollPropagation(formContainer);
   await loadCategories();
   if (userLocationKnown) {
     await loadEvents(center[0], center[1]);
