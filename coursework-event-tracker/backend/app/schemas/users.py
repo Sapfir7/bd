@@ -15,6 +15,9 @@ class UserProfileUpdate(BaseModel):
     full_name: Optional[str]
     bio: Optional[str]
     avatar_url: Optional[str]
+    last_latitude: Optional[float] = None
+    last_longitude: Optional[float] = None
+    location_updated_at: Optional[datetime] = None
 
 
 class UserProfileOut(UserProfileUpdate):
